@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Lab</title>
+  <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      background: linear-gradient(135deg, #0d0d1a 0%, #1a1a2e 50%, #0d1926 100%);
+      color: #e0e0e0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    header h1 {
+      font-size: 1.8rem;
+      background: linear-gradient(90deg, #00d4ff, #7b2ff7, #f72585);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 4px;
+    }
+    header p { color: #888; font-size: 0.85rem; }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      background: rgba(30, 30, 50, 0.8);
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 20px;
+      backdrop-filter: blur(10px);
+    }
+    .panel h2 {
+      font-size: 0.9rem;
+      color: #00d4ff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel h2::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: #00d4ff;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #00d4ff;
+    }
+    textarea, input, select {
+      width: 100%;
+      padding: 12px;
+      background: #0d0d1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-family: inherit;
+      font-size: 0.9rem;
+      resize: vertical;
+    }
+    textarea:focus, input:focus { border-color: #00d4ff; outline: none; }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      color: #888;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .field { margin-bottom: 16px; }
+    .variants {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .variant {
+      background: #1a1a2e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      position: relative;
+    }
+    .variant-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .variant-name {
+      font-size: 0.8rem;
+      color: #7b2ff7;
+      font-weight: 600;
+    }
+    .variant-status {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #333;
+    }
+    .status-pending { color: #888; }
+    .status-running { color: #ffd700; background: rgba(255,215,0,0.1); }
+    .status-success { color: #00ff88; background: rgba(0,255,136,0.1); }
+    .status-error { color: #ff4444; background: rgba(255,68,68,0.1); }
+    .variant textarea { min-height: 60px; font-size: 0.8rem; }
+    #run-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(90deg, #7b2ff7, #f72585);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-top: 16px;
+    }
+    #run-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(123,47,247,0.4); }
+    #run-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .results-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .result-card {
+      background: #0d0d1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .result-header {
+      padding: 10px 14px;
+      background: #1a1a2e;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #333;
+    }
+    .result-title { font-size: 0.85rem; color: #00d4ff; }
+    .result-metrics {
+      display: flex;
+      gap: 12px;
+      font-size: 0.7rem;
+    }
+    .metric {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .metric-value { color: #00ff88; font-weight: 600; }
+    .result-body { padding: 14px; }
+    .code-block {
+      background: #000;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 0.75rem;
+      overflow-x: auto;
+      max-height: 150px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: #888;
+    }
+    .output-block {
+      margin-top: 10px;
+      padding: 12px;
+      background: rgba(0,255,136,0.05);
+      border: 1px solid rgba(0,255,136,0.2);
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+    .output-block.error {
+      background: rgba(255,68,68,0.05);
+      border-color: rgba(255,68,68,0.2);
+      color: #ff6b6b;
+    }
+    .plot-container {
+      margin-top: 10px;
+      background: #fff;
+      border-radius: 6px;
+      padding: 10px;
+      min-height: 200px;
+    }
+    .streaming-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #ffd700;
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .full-width { grid-column: 1 / -1; }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚡ Prompt Lab</h1>
+    <p>Test prompt variants → Generate code → Execute live with PyScript</p>
+  </header>
+
+  <div class="container">
+    <div class="panel">
+      <h2>Task Configuration</h2>
+      <div class="field">
+        <label>Data Analysis Task</label>
+        <select id="task-select">
+          <option value="sales">Analyze sales data: top products, trends, summary stats</option>
+          <option value="outliers">Detect outliers and anomalies in numeric data</option>
+          <option value="correlation">Find correlations between variables</option>
+          <option value="timeseries">Time series decomposition and forecasting</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Sample Data Shape</label>
+        <input type="text" id="data-shape" value="1000 rows × 5 columns (date, product, region, quantity, revenue)">
+      </div>
+      <div class="field">
+        <label>Output Requirements</label>
+        <input type="text" id="requirements" value="Print summary, create matplotlib visualization">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Prompt Variants</h2>
+      <div class="variants" id="variants">
+        <div class="variant" data-id="A">
+          <div class="variant-header">
+            <span class="variant-name">Variant A: Concise</span>
+            <span class="variant-status status-pending" id="status-A">Ready</span>
+          </div>
+          <textarea id="prompt-A">Write Python code using pandas and matplotlib to: {{task}}. Data has {{shape}}. {{requirements}}. Be concise.</textarea>
+        </div>
+        <div class="variant" data-id="B">
+          <div class="variant-header">
+            <span class="variant-name">Variant B: Step-by-Step</span>
+            <span class="variant-status status-pending" id="status-B">Ready</span>
+          </div>
+          <textarea id="prompt-B">You are a data scientist. Think step by step.
+
+Task: {{task}}
+Data: {{shape}}
+Requirements: {{requirements}}
+
+Write clean, commented Python code using pandas and matplotlib.</textarea>
+        </div>
+        <div class="variant" data-id="C">
+          <div class="variant-header">
+            <span class="variant-name">Variant C: Expert Persona</span>
+            <span class="variant-status status-pending" id="status-C">Ready</span>
+          </div>
+          <textarea id="prompt-C">As a senior data analyst at a Fortune 500 company, write production-quality Python code.
+
+Objective: {{task}}
+Dataset: {{shape}}
+Deliverables: {{requirements}}
+
+Use pandas for data manipulation, matplotlib/seaborn for visualization. Include error handling.</textarea>
+        </div>
+      </div>
+      <button id="run-btn">▶ Run All Variants</button>
+    </div>
+
+    <div class="panel full-width">
+      <h2>Evaluation Results</h2>
+      <div class="results-grid" id="results">
+        <div class="empty-state">
+          Configure your task and click "Run All Variants" to see results
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="py" config='{"packages": ["pandas", "matplotlib", "numpy"]}'>
+import js
+import json
+import asyncio
+import io
+import base64
+import traceback
+from datetime import datetime
+import pandas as pd
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from pyscript import document, window
+from pyodide.http import pyfetch
+from pyodide.ffi import create_proxy
+
+API_URL = "http://127.0.0.1:3737/v1/chat/completions"
+MODEL = "KimiK2-v2 Chatter"
+
+def generate_sample_data(task):
+    """Generate sample data based on selected task"""
+    np.random.seed(42)
+    n = 1000
+    
+    if task == "sales":
+        return pd.DataFrame({
+            'date': pd.date_range('2024-01-01', periods=n, freq='H'),
+            'product': np.random.choice(['Widget A', 'Widget B', 'Gadget X', 'Gadget Y'], n),
+            'region': np.random.choice(['North', 'South', 'East', 'West'], n),
+            'quantity': np.random.poisson(10, n),
+            'revenue': np.random.exponential(100, n).round(2)
+        })
+    elif task == "outliers":
+        normal = np.random.normal(100, 15, n-20)
+        outliers = np.random.uniform(200, 300, 20)
+        values = np.concatenate([normal, outliers])
+        np.random.shuffle(values)
+        return pd.DataFrame({'value': values, 'category': np.random.choice(['A','B','C'], n)})
+    elif task == "correlation":
+        x = np.random.normal(0, 1, n)
+        return pd.DataFrame({
+            'feature_a': x,
+            'feature_b': x * 0.8 + np.random.normal(0, 0.5, n),
+            'feature_c': np.random.normal(0, 1, n),
+            'feature_d': -x * 0.6 + np.random.normal(0, 0.3, n)
+        })
+    else:  # timeseries
+        t = np.arange(n)
+        trend = t * 0.05
+        seasonal = 10 * np.sin(2 * np.pi * t / 24)
+        noise = np.random.normal(0, 2, n)
+        return pd.DataFrame({
+            'timestamp': pd.date_range('2024-01-01', periods=n, freq='H'),
+            'value': 100 + trend + seasonal + noise
+        })
+
+def update_status(variant_id, status, text):
+    el = document.getElementById(f"status-{variant_id}")
+    el.className = f"variant-status status-{status}"
+    el.textContent = text
+
+def render_result(variant_id, code, output, plot_b64, exec_time, success):
+    results_div = document.getElementById("results")
+    
+    # Clear empty state on first result
+    if "empty-state" in results_div.innerHTML:
+        results_div.innerHTML = ""
+    
+    card = document.createElement("div")
+    card.className = "result-card"
+    
+    status_color = "#00ff88" if success else "#ff4444"
+    status_text = "✓ Executed" if success else "✗ Error"
+    
+    plot_html = ""
+    if plot_b64:
+        plot_html = f'<div class="plot-container"><img src="data:image/png;base64,{plot_b64}" style="max-width:100%;"></div>'
+    
+    output_class = "output-block" if success else "output-block error"
+    
+    card.innerHTML = f'''
+        <div class="result-header">
+            <span class="result-title">Variant {variant_id}</span>
+            <div class="result-metrics">
+                <div class="metric">
+                    <span>Status:</span>
+                    <span class="metric-value" style="color:{status_color}">{status_text}</span>
+                </div>
+                <div class="metric">
+                    <span>Exec Time:</span>
+                    <span class="metric-value">{exec_time:.0f}ms</span>
+                </div>
+                <div class="metric">
+                    <span>Code Lines:</span>
+                    <span class="metric-value">{len(code.strip().split(chr(10)))}</span>
+                </div>
+            </div>
+        </div>
+        <div class="result-body">
+            <div class="code-block">{code[:1500]}{"..." if len(code) > 1500 else ""}</div>
+            <div class="{output_class}">{output[:1000]}{"..." if len(output) > 1000 else ""}</div>
+            {plot_html}
+        </div>
+    '''
+    results_div.appendChild(card)
+
+def extract_code(response_text):
+    """Extract Python code from markdown code blocks"""
+    import re
+    # Try to find ```python blocks first
+    pattern = r'```python\s*(.*?)```'
+    matches = re.findall(pattern, response_text, re.DOTALL)
+    if matches:
+        return matches[0].strip()
+    # Try generic code blocks
+    pattern = r'```\s*(.*?)```'
+    matches = re.findall(pattern, response_text, re.DOTALL)
+    if matches:
+        return matches[0].strip()
+    return response_text
+
+def execute_code(code, df):
+    """Execute generated code and capture output + plot"""
+    output_buffer = io.StringIO()
+    plot_b64 = None
+    
+    # Create execution namespace with data
+    namespace = {
+        'pd': pd,
+        'np': np,
+        'plt': plt,
+        'df': df,
+        'data': df,
+        'print': lambda *args, **kwargs: print(*args, **kwargs, file=output_buffer)
+    }
+    
+    try:
+        plt.close('all')
+        exec(code, namespace)
+        
+        # Capture any matplotlib figures
+        if plt.get_fignums():
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png', dpi=100, bbox_inches='tight', 
+                       facecolor='#1a1a2e', edgecolor='none')
+            buf.seek(0)
+            plot_b64 = base64.b64encode(buf.read()).decode('utf-8')
+            plt.close('all')
+        
+        return True, output_buffer.getvalue() or "(Code executed successfully, no print output)", plot_b64
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}", None
+
+async def stream_completion(prompt, variant_id):
+    """Stream completion from Groq-compatible endpoint"""
+    update_status(variant_id, "running", "Generating...")
+    
+    full_response = ""
+    
+    try:
+        response = await pyfetch(
+            API_URL,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps({
+                "model": MODEL,
+                "messages": [
+                    {"role": "system", "content": "You are an expert Python data analyst. Generate only executable Python code. Use 'df' as the DataFrame variable name. Always include plt.tight_layout() before any plotting."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 1500,
+                "stream": True
+            })
+        )
+        
+        reader = response.js_response.body.getReader()
+        decoder = js.TextDecoder.new()
+        
+        while True:
+            result = await reader.read()
+            if result.done:
+                break
+            
+            chunk = decoder.decode(result.value)
+            lines = [l for l in chunk.split('\n') if l.startswith('data: ')]
+            
+            for line in lines:
+                data = line[6:]
+                if data == '[DONE]':
+                    break
+                try:
+                    parsed = json.loads(data)
+                    content = parsed.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                    if content:
+                        full_response += content
+                except:
+                    pass
+        
+        return full_response
+    except Exception as e:
+        return f"# Error: {e}"
+
+async def run_variant(variant_id, prompt, df):
+    """Run a single variant: generate code, execute it, measure results"""
+    start = datetime.now()
+    
+    # Get code from LLM
+    response = await stream_completion(prompt, variant_id)
+    code = extract_code(response)
+    
+    gen_time = (datetime.now() - start).total_seconds() * 1000
+    update_status(variant_id, "running", f"Executing... ({gen_time:.0f}ms gen)")
+    
+    # Execute the code
+    exec_start = datetime.now()
+    success, output, plot_b64 = execute_code(code, df)
+    exec_time = (datetime.now() - exec_start).total_seconds() * 1000
+    
+    total_time = gen_time + exec_time
+    
+    status = "success" if success else "error"
+    update_status(variant_id, status, f"Done ({total_time:.0f}ms)")
+    
+    render_result(variant_id, code, output, plot_b64, total_time, success)
+
+async def run_all(event):
+    """Run all prompt variants"""
+    btn = document.getElementById("run-btn")
+    btn.disabled = True
+    btn.textContent = "⏳ Running..."
+    
+    # Clear previous results
+    document.getElementById("results").innerHTML = '<div class="empty-state"><span class="streaming-indicator"></span> Generating and executing code...</div>'
+    
+    # Get configuration
+    task_select = document.getElementById("task-select")
+    task = task_select.value
+    task_text = task_select.options[task_select.selectedIndex].text
+    
+    shape = document.getElementById("data-shape").value
+    requirements = document.getElementById("requirements").value
+    
+    # Generate sample data
+    df = generate_sample_data(task)
+    
+    # Build prompts from templates
+    variants = ['A', 'B', 'C']
+    
+    for v in variants:
+        update_status(v, "pending", "Queued")
+    
+    for v in variants:
+        prompt_el = document.getElementById(f"prompt-{v}")
+        prompt = prompt_el.value
+        prompt = prompt.replace("{{task}}", task_text)
+        prompt = prompt.replace("{{shape}}", shape)
+        prompt = prompt.replace("{{requirements}}", requirements)
+        
+        await run_variant(v, prompt, df)
+    
+    btn.disabled = False
+    btn.textContent = "▶ Run All Variants"
+
+# Bind event handler
+run_btn = document.getElementById("run-btn")
+run_btn.addEventListener("click", create_proxy(lambda e: asyncio.ensure_future(run_all(e))))
+  </script>
+</body>
+</html>
