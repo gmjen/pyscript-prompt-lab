@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Prompt Lab</title>
-  <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
-  <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+  <link rel="stylesheet" href="https://pyscript.net/releases/2024.11.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2024.11.1/core.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -296,15 +296,15 @@ import asyncio
 import io
 import base64
 import traceback
+import re
 from datetime import datetime
 import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from pyscript import document, window
-from pyodide.http import pyfetch
-from pyodide.ffi import create_proxy
+from pyscript import document
+from pyodide.ffi import create_proxy, to_js
 
 API_URL = "http://127.0.0.1:3737/v1/chat/completions"
 MODEL = "KimiK2-v2 Chatter"
@@ -316,7 +316,7 @@ def generate_sample_data(task):
     
     if task == "sales":
         return pd.DataFrame({
-            'date': pd.date_range('2024-01-01', periods=n, freq='H'),
+            'date': pd.date_range('2024-01-01', periods=n, freq='h'),
             'product': np.random.choice(['Widget A', 'Widget B', 'Gadget X', 'Gadget Y'], n),
             'region': np.random.choice(['North', 'South', 'East', 'West'], n),
             'quantity': np.random.poisson(10, n),
@@ -342,7 +342,7 @@ def generate_sample_data(task):
         seasonal = 10 * np.sin(2 * np.pi * t / 24)
         noise = np.random.normal(0, 2, n)
         return pd.DataFrame({
-            'timestamp': pd.date_range('2024-01-01', periods=n, freq='H'),
+            'timestamp': pd.date_range('2024-01-01', periods=n, freq='h'),
             'value': 100 + trend + seasonal + noise
         })
 
@@ -370,6 +370,10 @@ def render_result(variant_id, code, output, plot_b64, exec_time, success):
     
     output_class = "output-block" if success else "output-block error"
     
+    # Escape HTML in code and output
+    code_display = code[:1500].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    output_display = output[:1000].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    
     card.innerHTML = f'''
         <div class="result-header">
             <span class="result-title">Variant {variant_id}</span>
@@ -384,13 +388,13 @@ def render_result(variant_id, code, output, plot_b64, exec_time, success):
                 </div>
                 <div class="metric">
                     <span>Code Lines:</span>
-                    <span class="metric-value">{len(code.strip().split(chr(10)))}</span>
+                    <span class="metric-value">{len(code.strip().splitlines())}</span>
                 </div>
             </div>
         </div>
         <div class="result-body">
-            <div class="code-block">{code[:1500]}{"..." if len(code) > 1500 else ""}</div>
-            <div class="{output_class}">{output[:1000]}{"..." if len(output) > 1000 else ""}</div>
+            <div class="code-block">{code_display}{"..." if len(code) > 1500 else ""}</div>
+            <div class="{output_class}">{output_display}{"..." if len(output) > 1000 else ""}</div>
             {plot_html}
         </div>
     '''
@@ -398,7 +402,6 @@ def render_result(variant_id, code, output, plot_b64, exec_time, success):
 
 def extract_code(response_text):
     """Extract Python code from markdown code blocks"""
-    import re
     # Try to find ```python blocks first
     pattern = r'```python\s*(.*?)```'
     matches = re.findall(pattern, response_text, re.DOTALL)
@@ -444,29 +447,36 @@ def execute_code(code, df):
         return False, f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}", None
 
 async def stream_completion(prompt, variant_id):
-    """Stream completion from Groq-compatible endpoint"""
+    """Stream completion from Groq-compatible endpoint using js.fetch"""
     update_status(variant_id, "running", "Generating...")
     
     full_response = ""
     
     try:
-        response = await pyfetch(
+        # Use js.fetch directly for streaming support
+        request_body = json.dumps({
+            "model": MODEL,
+            "messages": [
+                {"role": "system", "content": "You are an expert Python data analyst. Generate only executable Python code. Use 'df' as the DataFrame variable name. Always include plt.tight_layout() before any plotting."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 1500,
+            "stream": True
+        })
+        
+        response = await js.fetch(
             API_URL,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-            body=json.dumps({
-                "model": MODEL,
-                "messages": [
-                    {"role": "system", "content": "You are an expert Python data analyst. Generate only executable Python code. Use 'df' as the DataFrame variable name. Always include plt.tight_layout() before any plotting."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 1500,
-                "stream": True
-            })
+            to_js({
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "body": request_body
+            }, dict_converter=js.Object.fromEntries)
         )
         
-        reader = response.js_response.body.getReader()
+        reader = response.body.getReader()
         decoder = js.TextDecoder.new()
         
         while True:
@@ -478,20 +488,23 @@ async def stream_completion(prompt, variant_id):
             lines = [l for l in chunk.split('\n') if l.startswith('data: ')]
             
             for line in lines:
-                data = line[6:]
+                data = line[6:]  # Remove 'data: ' prefix
                 if data == '[DONE]':
                     break
                 try:
                     parsed = json.loads(data)
-                    content = parsed.get('choices', [{}])[0].get('delta', {}).get('content', '')
-                    if content:
-                        full_response += content
-                except:
+                    choices = parsed.get('choices', [])
+                    if choices and len(choices) > 0:
+                        delta = choices[0].get('delta', {})
+                        content = delta.get('content', '')
+                        if content:
+                            full_response += content
+                except json.JSONDecodeError:
                     pass
         
         return full_response
     except Exception as e:
-        return f"# Error: {e}"
+        return f"# Error: {type(e).__name__}: {e}"
 
 async def run_variant(variant_id, prompt, df):
     """Run a single variant: generate code, execute it, measure results"""
@@ -528,7 +541,8 @@ async def run_all(event):
     # Get configuration
     task_select = document.getElementById("task-select")
     task = task_select.value
-    task_text = task_select.options[task_select.selectedIndex].text
+    # Get selected option text using JavaScript property access
+    task_text = task_select.selectedOptions.item(0).text
     
     shape = document.getElementById("data-shape").value
     requirements = document.getElementById("requirements").value
@@ -554,9 +568,12 @@ async def run_all(event):
     btn.disabled = False
     btn.textContent = "▶ Run All Variants"
 
-# Bind event handler
+# Bind event handler using PyScript's recommended pattern
+def handle_click(event):
+    asyncio.ensure_future(run_all(event))
+
 run_btn = document.getElementById("run-btn")
-run_btn.addEventListener("click", create_proxy(lambda e: asyncio.ensure_future(run_all(e))))
+run_btn.addEventListener("click", create_proxy(handle_click))
   </script>
 </body>
 </html>
